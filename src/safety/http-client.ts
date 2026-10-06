@@ -7,7 +7,7 @@ import { createRateLimiter } from "./rate-limiter.js";
 import { resolveAndPin } from "./ssrf-guard.js";
 import type { PinnedAddress, Resolver } from "./ssrf-guard.js";
 
-export const USER_AGENT = "whsquad/0.3.0 (+authorized-audit; https://github.com/LihanCanCode/whitehat-squad)";
+export const USER_AGENT = "whsquad/0.3.1 (+authorized-audit; https://github.com/LihanCanCode/whitehat-squad)";
 
 const MAX_REDIRECTS = 3;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);

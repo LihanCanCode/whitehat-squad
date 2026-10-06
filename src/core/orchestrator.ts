@@ -10,7 +10,7 @@ import type {
   SuppressedFinding,
 } from "./types.js";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 
 export interface ScanInput {
   readonly mode: Mode;

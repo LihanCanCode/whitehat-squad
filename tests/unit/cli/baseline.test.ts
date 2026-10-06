@@ -11,7 +11,7 @@ describe("baseline document", () => {
   it("records ids, rule ids, target and tool version, sorted for stable diffs", () => {
     const doc = buildBaseline(sampleReport({ target: "./app" }));
     expect(doc.target).toBe("./app");
-    expect(doc.toolVersion).toBe("0.3.0");
+    expect(doc.toolVersion).toBe("0.3.1");
     expect(doc.findings.map((f) => f.id)).toEqual([...doc.findings.map((f) => f.id)].sort());
     expect(doc.findings[0]).toEqual({ id: expect.any(String), ruleId: expect.any(String) });
     expect(doc.findings).toHaveLength(6);
