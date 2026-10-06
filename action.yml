@@ -1,0 +1,90 @@
+name: whitehat-squad
+description: Deterministic security audit for vibe-coded apps, with an ordered fix plan. Uploads SARIF to code scanning.
+author: LihanCanCode
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  path:
+    description: Folder to scan, relative to the workspace.
+    default: "."
+  fail-on:
+    description: "Fail the step at or above this severity: critical, high, medium, low, info."
+    default: high
+  only:
+    description: Comma-separated rule id prefixes to keep (e.g. DB,SEC).
+    default: ""
+  exclude:
+    description: Comma-separated rule id prefixes to drop (e.g. WEB-L,SUP-004).
+    default: ""
+  baseline:
+    description: Baseline file; findings already in it never fail the run.
+    default: ""
+  use-repo-config:
+    description: "Honour the scanned repo's whsquad.config.json. Off by default: on a pull request that file is attacker-controlled and can switch rules off."
+    default: "false"
+  upload-sarif:
+    description: Upload the SARIF report to GitHub code scanning (needs security-events write).
+    default: "true"
+
+outputs:
+  sarif:
+    description: Path of the SARIF report.
+    value: ${{ steps.scan.outputs.sarif }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: 22
+
+    - name: Build whsquad
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund && npm run build
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        WHSQUAD_BIN: ${{ github.action_path }}/bin/whsquad.js
+        IN_PATH: ${{ inputs.path }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_ONLY: ${{ inputs.only }}
+        IN_EXCLUDE: ${{ inputs.exclude }}
+        IN_BASELINE: ${{ inputs.baseline }}
+        IN_USE_CONFIG: ${{ inputs.use-repo-config }}
+        SARIF: ${{ runner.temp }}/whsquad.sarif
+      run: |
+        for v in "$IN_PATH" "$IN_ONLY" "$IN_EXCLUDE" "$IN_BASELINE"; do
+          case "$v" in -*) echo "::error::inputs must not start with -: $v"; exit 2;; esac
+        done
+        args=(scan "$IN_PATH" --format sarif --out "$SARIF" --fail-on "$IN_FAIL_ON" --no-color)
+        [ -n "$IN_ONLY" ] && args+=(--only "$IN_ONLY")
+        [ -n "$IN_EXCLUDE" ] && args+=(--exclude "$IN_EXCLUDE")
+        [ -n "$IN_BASELINE" ] && args+=(--baseline "$IN_BASELINE")
+        [ "$IN_USE_CONFIG" = "true" ] || args+=(--no-config)
+        echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+        set +e
+        node "$WHSQUAD_BIN" "${args[@]}"
+        code=$?
+        set -e
+        echo "exit=$code" >> "$GITHUB_OUTPUT"
+        # 0 clean, 1 findings at/above fail-on: both still upload the report; anything else is an error.
+        if [ "$code" -gt 1 ]; then exit "$code"; fi
+
+    - name: Upload SARIF
+      if: ${{ always() && inputs.upload-sarif == 'true' && steps.scan.outputs.sarif != '' }}
+      uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif }}
+        category: whitehat-squad
+
+    - name: Enforce fail-on
+      if: ${{ steps.scan.outputs.exit == '1' }}
+      shell: bash
+      run: |
+        echo "::error::whitehat-squad found issues at or above the fail-on severity. See the code scanning alerts or run: npx whsquad fix"
+        exit 1

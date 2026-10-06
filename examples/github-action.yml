@@ -1,0 +1,26 @@
+# Copy to .github/workflows/whsquad.yml in YOUR project.
+name: whitehat-squad
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Scan
+        run: npx whitehat-squad scan . --format sarif --out whsquad.sarif --fail-on high
+        continue-on-error: true
+      - name: Upload to GitHub code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: whsquad.sarif

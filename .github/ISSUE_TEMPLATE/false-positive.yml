@@ -1,0 +1,31 @@
+name: False positive
+description: whsquad flagged something that is actually safe
+labels: ["false-positive"]
+body:
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id
+      placeholder: e.g. AUTH-002
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Minimal code that triggers it
+      description: Remove anything private. Never paste real keys or secrets.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it is safe
+      description: e.g. "auth is enforced by middleware.ts", "this table has RLS in a later migration"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: whsquad version
+      placeholder: whsquad --version

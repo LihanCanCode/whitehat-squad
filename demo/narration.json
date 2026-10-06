@@ -1,0 +1,14 @@
+{
+  "voice": "en-US-AndrewNeural",
+  "rate": "+6%",
+  "beats": [
+    { "id": "title", "scene": null, "text": "Built your app with AI? It's probably leaking something." },
+    { "id": "scan", "scene": "scan", "text": "One command. Nine security agents. No API key, no account." },
+    { "id": "focus", "scene": "focus", "text": "Like a database table anyone can read, or a live Stripe key sitting in your repo." },
+    { "id": "fix", "scene": "fix", "text": "It doesn't stop at finding them. It plans every fix, in the right order." },
+    { "id": "prompt", "scene": "prompt", "text": "Then writes one prompt for Claude Code, Cursor, or Codex." },
+    { "id": "verify", "scene": "verify", "text": "Apply the safe fixes, and verify the hole is really closed." },
+    { "id": "watch", "scene": "watch", "text": "Or keep it watching while you build." },
+    { "id": "end", "scene": null, "text": "whitehat-squad. Find, fix, verify. Free, and it runs offline." }
+  ]
+}

@@ -1,0 +1,22 @@
+name: Missed vulnerability / new rule
+description: A real security hole whsquad did not catch
+labels: ["new-rule"]
+body:
+  - type: textarea
+    id: vulnerable
+    attributes:
+      label: Vulnerable code (minimal)
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Who can exploit it, and what happens?
+    validations:
+      required: true
+  - type: textarea
+    id: safe
+    attributes:
+      label: What the safe version looks like
+      render: ts

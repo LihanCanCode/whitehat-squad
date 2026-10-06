@@ -1,0 +1,61 @@
+{
+  "name": "whitehat-squad",
+  "version": "0.3.0",
+  "description": "A team of specialist white-hat agents that audit vibe-coded apps and hand you the fix for every hole.",
+  "type": "module",
+  "bin": {
+    "whsquad": "bin/whsquad.js",
+    "whitehat-squad": "bin/whsquad.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "skills",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "security",
+    "vibe-coding",
+    "supabase",
+    "nextjs",
+    "claude-code",
+    "cursor",
+    "codex",
+    "ai-agents",
+    "static-analysis",
+    "sast",
+    "rls",
+    "secrets",
+    "white-hat",
+    "pentest",
+    "devsecops",
+    "cli"
+  ],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LihanCanCode/whitehat-squad.git"
+  },
+  "homepage": "https://github.com/LihanCanCode/whitehat-squad#readme",
+  "bugs": {
+    "url": "https://github.com/LihanCanCode/whitehat-squad/issues"
+  },
+  "author": "LihanCanCode"
+}

@@ -1,0 +1,30 @@
+---
+description: Run whitehat-squad to catch security issues before finishing a change
+globs:
+alwaysApply: true
+---
+
+<!-- Copy this file to .cursor/rules/whsquad.mdc in your project. -->
+
+This project is checked with `whitehat-squad` (`whsquad`), a security scanner built for
+AI-generated code: leaked keys, open Supabase/Firebase tables, missing auth, unsafe LLM usage,
+risky dependencies.
+
+- Before treating a change as done, run `npx whitehat-squad scan . --format json --out .whsquad/report.json`.
+  Exit code `1` means findings at or above `high` severity.
+- Then run `npx whitehat-squad fix .` and read the plan. Work through its steps IN ORDER, one commit
+  per step (rotate leaked secrets first, then data exposure, auth, injection, supply chain, hardening).
+- For low/medium-confidence findings run `npx whitehat-squad fix . --format triage` and answer each
+  one adversarially (CONFIRMED / REJECTED with a reason / NEEDS-HUMAN) before acting. Never modify
+  code during triage. If a step needs a decision only the user can make, stop and ask.
+- For live feedback while coding, suggest the user run `npx whitehat-squad watch .` in a side
+  terminal; it re-scans on save and prints only what changed.
+- After touching auth, a database, secrets, file uploads, or an LLM call, run the scan immediately,
+  not only at the end of the session.
+- Rotate, don't just delete, any leaked secret the scan finds. Fix RLS/auth gaps server-side, never
+  by disabling the protection. Never silence a finding with `whsquad-ignore` unless the user
+  explicitly confirms it's a deliberate exception.
+- Verify each step with `npx whitehat-squad verify <RULE-ID> .` and report the result as given — don't
+  claim the project is "secure" beyond what was actually verified.
+- Live scans (`whsquad scan https://...`) need ownership proof first and are read-only. Only point
+  them at the user's own site, never a third party's.

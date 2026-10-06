@@ -1,0 +1,15 @@
+name: Bug
+description: whsquad crashed or behaved unexpectedly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Command you ran, output (redact anything private), expected behaviour.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: whsquad version / Node version / OS

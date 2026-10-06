@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+whsquad-report.*
+.whsquad/
+brag-output/
+
+# demo video pipeline: local tools, generated app, renders
+demo/tools/
+demo/work/
+demo/out/
+
+# launch drafts (private until posted)
+launch/
+
+# internal working notes (never published)
+internal/
