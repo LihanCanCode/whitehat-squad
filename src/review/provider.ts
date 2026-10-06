@@ -68,7 +68,8 @@ export function resolveClaudeExecutable(
     if (!existsSync(shim)) continue;
     const m = /"%dp0%\\?([^"]+\.exe)"/i.exec(readFileSync(shim, "utf8"));
     if (m?.[1]) {
-      const exe = path.join(d, m[1]);
+      // The shim writes the path with backslashes; rebuild it with the native separator.
+      const exe = path.join(d, ...m[1].split(/[\\/]+/).filter(Boolean));
       if (existsSync(exe)) return exe;
     }
   }
