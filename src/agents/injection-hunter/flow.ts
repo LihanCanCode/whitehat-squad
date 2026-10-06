@@ -36,7 +36,7 @@ export function flowOf(ctx: FileCtx, unit: FunctionUnit, taint: TaintAnalysis, a
   const tainted = pieces.filter(
     (p) =>
       p.kind === "expr" &&
-      taint.isTainted(p.bare, at) &&
+      taint.isTainted(p.text, at) &&
       !isConstantPiece(p.bare) &&
       !isLookupPiece(p.bare, taint, at) &&
       !(opts.ignore?.(p.bare) ?? false) &&

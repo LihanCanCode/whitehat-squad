@@ -24,7 +24,9 @@ const ORIGIN_COMPARE = /\.\s*(?:origin|host|hostname)\s*(?:===|!==|==|!=)|(?:inc
 
 /** Route segments (`params.locale`, `locale`) cannot contain a slash, so after a leading "/" they cannot change the host. */
 const ROUTE_SEGMENT = /^(?:(?:\w+\.)?params\.\w+|[\w$]*[lL]ocale[\w$]*|lang)$/;
-const IGNORE = (bare: string): boolean => isBasePiece(bare) || ROUTE_SEGMENT.test(bare.replace(/\s+as\s+[\w.<>[\]| ]+/g, "").replace(/\s*(?:\|\||\?\?).*$/, "").replace(/[()]/g, "").trim());
+/** The current page's own path (usePathname(), location.pathname) cannot change the origin. */
+const OWN_PATH = /^(?:pathname|(?:window\s*\.\s*)?location\s*\.\s*pathname|usePathname\s*\(\s*\))$/;
+const IGNORE = (bare: string): boolean => OWN_PATH.test(bare.trim()) || isBasePiece(bare) || ROUTE_SEGMENT.test(bare.replace(/\s+as\s+[\w.<>[\]| ]+/g, "").replace(/\s*(?:\|\||\?\?).*$/, "").replace(/[()]/g, "").trim());
 
 function guarded(code: string): boolean {
   return NAMED_GUARD.test(code) || ORIGIN_COMPARE.test(code) || (SLASH_ROOT.test(code) && SLASH_NO_DOUBLE.test(code));

@@ -93,6 +93,12 @@ function writesOf(file: WebFile, name: string, sinkAt: number): Array<{ from: nu
   return out;
 }
 
+/** The value uses a parameter of the enclosing function (component props, handler args): caller-controlled. */
+function fromParams(file: WebFile, text: string, at: number): boolean {
+  const names = parseParams(scopeOf(file, at).params).flatMap((p) => p.names);
+  return names.some((n) => new RegExp(`(?<![\\w$.])${n.replace(/\$/g, "\\$")}(?![\\w$])`).test(text));
+}
+
 function userTainted(file: WebFile, text: string, at: number): boolean {
   const scope = scopeOf(file, at);
   const names = parseParams(scope.params).flatMap((p) => p.names).filter((n) => /^(?:searchParams|params|query|req|request)$/.test(n));
@@ -122,7 +128,9 @@ function isSafeRange(ctx: Ctx2, from: number, to: number, depth: number): boolea
   }
   if (!/^[A-Za-z_$][\w$]*$/.test(code) || depth >= MAX_DEPTH) return false;
   const writes = writesOf(file, code, ctx.sinkAt);
-  return writes.length > 0 && writes.every((w) => isSafeRange(ctx, w.from, exprEnd(src, w.from, true), depth + 1));
+  // No local definition (e.g. an imported THEME_INIT_SCRIPT): an UPPER_SNAKE_CASE name is a constant by convention.
+  if (writes.length === 0) return UPPER.test(code);
+  return writes.every((w) => isSafeRange(ctx, w.from, exprEnd(src, w.from, true), depth + 1));
 }
 
 function explanationFor(name: string, scriptJson: boolean): string {
@@ -138,14 +146,15 @@ function explanationFor(name: string, scriptJson: boolean): string {
   );
 }
 
-function build(file: WebFile, target: string, name: string, at: number, scriptJson: boolean): Finding {
+function build(file: WebFile, target: string, name: string, at: number, scriptJson: boolean, traced = true): Finding {
   const line = lineAt(file, at);
   return make({
     ruleId: "WEB-003",
     title: scriptJson ? "User data serialized into an inline script without escaping" : `Unsanitized value written with ${name}`,
     severity: "high",
-    confidence: "medium",
-    explanation: explanationFor(name, scriptJson),
+    // Calibrated on public repos: values not traced to users/URLs/requests are usually app-owned HTML.
+    confidence: traced ? "medium" : "low",
+    explanation: explanationFor(name, scriptJson) + (traced ? "" : " whsquad could not trace this value to user input; check where it comes from."),
     evidence: [{ file: file.path, line, snippet: snippetOf(file, at) }],
     fix: {
       summary: scriptJson ? "Escape '<' in the serialized JSON (or use a serializer that does)." : "Render as text, or wrap the exact value in DOMPurify.sanitize() before inserting HTML.",
@@ -171,7 +180,8 @@ export function xssFindings(file: WebFile, target: string): Finding[] {
       if (isSafeRange({ file, sinkAt: m.index }, from, to, 0)) continue;
       const code = src.code.slice(from, to).trim();
       const scriptJson = /^JSON\s*\.\s*stringify\s*\(/.test(code);
-      out.push(build(file, target, scriptJson ? "dangerouslySetInnerHTML in a <script>" : sink.name, m.index, scriptJson));
+      const traced = scriptJson || userTainted(file, code, m.index) || fromParams(file, code, m.index);
+      out.push(build(file, target, scriptJson ? "dangerouslySetInnerHTML in a <script>" : sink.name, m.index, scriptJson, traced));
     }
   }
   if (file.isMarkup) {

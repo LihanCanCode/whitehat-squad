@@ -12,6 +12,13 @@ import type { WebFile } from "./util.js";
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|vue|svelte|html?)$/i;
 const MAX_FILE_BYTES = 600_000;
 
+/** Bundled / minified output (e.g. a built bundle copied into public/): very long lines, not source. */
+function looksMinified(text: string): boolean {
+  if (text.length < 5_000) return false;
+  const long = text.split("\n").filter((l) => l.length > 1_000).reduce((n, l) => n + l.length, 0);
+  return long > text.length / 2;
+}
+
 /** Reads every scannable file once. Config files are kept even when they live in an ignored/test-looking place. */
 async function loadFiles(ctx: ScanContext): Promise<WebFile[]> {
   const files: WebFile[] = [];
@@ -19,7 +26,7 @@ async function loadFiles(ctx: ScanContext): Promise<WebFile[]> {
     if (isVendorPath(path) || isGeneratedPath(path)) continue;
     if (!(CODE_FILE.test(path) || NEXT_CONFIG.test(path))) continue;
     const text = await ctx.files.read(path);
-    if (text !== null && text.length <= MAX_FILE_BYTES) files.push(loadWeb(path, text));
+    if (text !== null && text.length <= MAX_FILE_BYTES && !looksMinified(text)) files.push(loadWeb(path, text));
   }
   return files;
 }
