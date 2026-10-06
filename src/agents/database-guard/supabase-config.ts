@@ -116,10 +116,16 @@ async function ruleVerifyJwt(ctx: ScanContext, cfg: SupabaseConfig, target: stri
     const name = section.slice("functions.".length);
     const source = await functionSource(ctx, cfg, name, s.values["entrypoint"]);
     if (source === null || authenticatesItself(source)) continue;
+    // Calibrated on public repos: many open functions are public by design (sitemap, public forms).
+    // The dangerous ones bypass RLS with the service-role key; the rest are worth a look, not an alarm.
+    const serviceRole = /SERVICE_ROLE|service_role/.test(source);
     out.push(makeFinding({
-      ruleId: "DB-020", agentId: AGENT_ID, target, severity: "high", cwe: "CWE-306",
+      ruleId: "DB-020", agentId: AGENT_ID, target, severity: serviceRole ? "high" : "medium", ...(serviceRole ? {} : { confidence: "medium" as const }), cwe: "CWE-306",
       title: `Edge Function "${name}" is callable by anyone (verify_jwt = false)`,
-      explanation: `supabase/config.toml turns off JWT verification for the Edge Function "${name}", and its code never authenticates the caller (no auth.getUser / getClaims, no webhook signature or shared-secret check). Anyone on the internet who finds the function URL can invoke it, run whatever it does with your service credentials and burn your quota.`,
+      explanation: `supabase/config.toml turns off JWT verification for the Edge Function "${name}", and its code never authenticates the caller (no auth.getUser / getClaims, no webhook signature or shared-secret check). Anyone on the internet who finds the function URL can invoke it and burn your quota.` +
+        (serviceRole
+          ? " It uses the service-role key, which bypasses Row Level Security, so callers act with full database access."
+          : " If it is public by design (a sitemap, a public form), make sure it only does what an anonymous visitor may do."),
       evidence: [{ file: cfg.path, line: s.lines["verify_jwt"] ?? s.line, snippet: `[${section}] verify_jwt = false` }],
       fix: verifyJwtFix(name),
     }));

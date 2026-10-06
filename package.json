@@ -1,6 +1,6 @@
 {
   "name": "whitehat-squad",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A team of specialist white-hat agents that audit vibe-coded apps and hand you the fix for every hole.",
   "type": "module",
   "bin": {

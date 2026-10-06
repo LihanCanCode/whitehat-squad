@@ -72,6 +72,15 @@ async function projectDb(ctx: ScanContext): Promise<ProjectDb> {
  * access is a server-side driver/ORM (Drizzle, Prisma, pg on Neon...) with no Supabase mention.
  * With no evidence either way the SQL is analysed.
  */
+/**
+ * With a supabase/ folder, that folder is the Supabase schema; SQL elsewhere (services/x/migrations,
+ * a SQLite/D1 service) belongs to other databases unless it uses Supabase features. Public-repo study.
+ */
+export function supabaseScoped<T extends { path: string; content: string }>(sql: readonly T[]): T[] {
+  if (!sql.some((f) => SUPABASE_PATH.test(f.path))) return [...sql];
+  return sql.filter((f) => SUPABASE_PATH.test(f.path) || SUPABASE_SQL.test(stripSqlComments(f.content)));
+}
+
 async function sqlIsExposed(ctx: ScanContext, sql: readonly { path: string; content: string }[]): Promise<boolean> {
   if (sql.some((f) => SUPABASE_PATH.test(f.path))) return true;
   if (isMysqlOnly(sql)) return false;
@@ -157,7 +166,7 @@ export async function staticScan(ctx: ScanContext, target: string, now: Date): P
   const configs = await loadConfigs(ctx);
   const allSql = await readAll(ctx, ctx.files.paths.filter(isSqlPath));
   const exposed = configs.length > 0 || (await sqlIsExposed(ctx, allSql));
-  const sql = exposed ? allSql : [];
+  const sql = exposed ? supabaseScoped(allSql) : [];
   if (sql.length > 0 || configs.length > 0) {
     const model = buildModel(sql);
     addConfigBuckets(model, configs);

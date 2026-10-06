@@ -57,3 +57,42 @@ describe("WEB-003 calibration", () => {
     expect(await run(web, { "public/app.js": "el.innerHTML = location.hash;\n" }, "WEB-003")).toHaveLength(1);
   });
 });
+
+describe("AUTH-002: project-specific require/ensure guards", () => {
+  const action = (guard: string) =>
+    `"use server";\nimport { supabase } from "@/lib/supabase";\nexport async function revoke(id: string) {\n  ${guard}\n  await supabase.from("links").delete().eq("id", id);\n}\n`;
+  it("requireOrganizer() / requirePortalTab() count as access checks", async () => {
+    const { agent } = await import("../../src/agents/auth-auditor/index.js");
+    for (const g of ["const { supabase: s } = await requireOrganizer();", 'await requirePortalTab("staff");']) {
+      expect((await agent.run(memContext({ "app/x/actions.ts": action(g) }))).filter((f) => f.ruleId === "AUTH-002"), g).toEqual([]);
+    }
+  });
+  it("control: ensureDir() and no guard still fire", async () => {
+    const { agent } = await import("../../src/agents/auth-auditor/index.js");
+    for (const g of ['await ensureDir("/tmp/x");', ""]) {
+      expect((await agent.run(memContext({ "app/x/actions.ts": action(g) }))).filter((f) => f.ruleId === "AUTH-002"), g).toHaveLength(1);
+    }
+  });
+});
+
+describe("DatabaseGuard calibration", () => {
+  it("DB-001: with a supabase/ folder, another service's migrations are a different database", async () => {
+    const { agent } = await import("../../src/agents/database-guard/index.js");
+    const files = {
+      "supabase/migrations/1.sql": "create table public.notes (id uuid primary key, user_id uuid);\nalter table public.notes enable row level security;\ncreate policy p on public.notes for select using (auth.uid() = user_id);\n",
+      "services/billing-api/migrations/0001.sql": "CREATE TABLE purchases (token_hash TEXT PRIMARY KEY, product_id TEXT NOT NULL);\n",
+    };
+    const ids = (await agent.run(memContext(files))).map((f) => f.ruleId);
+    expect(ids).not.toContain("DB-001");
+    // control: the same table inside supabase/ still fires
+    const inside = { ...files, "supabase/migrations/2.sql": "create table public.purchases (token_hash text primary key);\n" };
+    expect((await agent.run(memContext(inside))).map((f) => f.ruleId)).toContain("DB-001");
+  });
+  it("DB-020: high only when the open function uses the service-role key", async () => {
+    const { agent } = await import("../../src/agents/database-guard/index.js");
+    const files = (body: string) => ({ "supabase/config.toml": "[functions.f]\nverify_jwt = false\n", "supabase/functions/f/index.ts": body });
+    const sev = async (body: string) => (await agent.run(memContext(files(body)))).find((f) => f.ruleId === "DB-020")?.severity;
+    expect(await sev('Deno.serve(() => new Response("<urlset/>"));\n')).toBe("medium");
+    expect(await sev('const s = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);\nDeno.serve(async () => { await s.from("users").delete().neq("id", ""); return new Response("ok"); });\n')).toBe("high");
+  });
+});

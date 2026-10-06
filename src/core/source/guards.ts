@@ -44,6 +44,9 @@ export const AUTH_CHECK = new RegExp(
     // getCurrentUser / getServerProfile / loadSessionUser ... but not getServerSideProps, getAuthor, getUserById
     String.raw`\b(?:get|fetch|load|require|ensure|assert)(?:Current|Authenticated|Logged\w*|Session|Server|Auth\w*|Signed\w*|Active|My)(?:User|Session|Profile|Account|Viewer|Member|Admin|Identity)(?:OrThrow|OrRedirect|OrNull|Id)?\s*\(`,
     String.raw`\b(?:require|ensure|assert)(?:User|Session|Admin|Login|LoggedIn|Auth\w*)\w*\s*\(`,
+    // Project guards named require<Role|Scope>() / ensure<Role>() (requireOrganizer, requirePortalTab,
+    // ensureMember): in server code these are access checks. Public-repo study; non-identity names excluded.
+    String.raw`\b${NOT_IDENTITY}(?!(?:require|ensure)(?:Dir|Directory|File|Path|Exists|Array|String|Number|Env|Config|Field|Param|Params|Value|Defined|Non[A-Z]\w*)\b)(?:require|ensure)(?:[A-Z][a-z]+)+\s*\(`,
     // requireRole / verifyAdmin / assertLoggedIn / checkAuthorization, but not checkUserExists
     // ...but not verifyCaptchaToken / verifyCsrfToken / validateEmailToken / checkTokenFormat / checkRoleName
     String.raw`\b${NOT_IDENTITY}(?:require|ensure|assert|check|verify|validate)\w*?(?:Auth\w*|Session|Admin|Login|LoggedIn|SignedIn|Token|Roles?|Permission\w*)\w*\s*\(`,

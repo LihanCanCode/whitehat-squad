@@ -44,7 +44,7 @@ describe("DB-020 edge functions with verify_jwt = false", () => {
   it("flags a function with no auth of its own", async () => {
     const f = await scan({
       "supabase/config.toml": cfg,
-      "supabase/functions/hook/index.ts": "Deno.serve(async (req) => { const b = await req.json(); await db.from('t').insert(b); return new Response('ok'); });",
+      "supabase/functions/hook/index.ts": "const db = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);\nDeno.serve(async (req) => { const b = await req.json(); await db.from('t').insert(b); return new Response('ok'); });",
     });
     expect(ids(f)).toEqual(["DB-020"]);
     expect(f[0]!.severity).toBe("high");

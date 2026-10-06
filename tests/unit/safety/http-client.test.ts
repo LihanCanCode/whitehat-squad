@@ -96,7 +96,7 @@ describe("request shaping", () => {
     expect(call?.headers["host"]).toBeUndefined();
     expect(call?.headers["connection"]).toBe("close");
     expect(USER_AGENT).toBe(
-      "whsquad/0.3.1 (+authorized-audit; https://github.com/LihanCanCode/whitehat-squad)",
+      "whsquad/0.3.2 (+authorized-audit; https://github.com/LihanCanCode/whitehat-squad)",
     );
   });
 
