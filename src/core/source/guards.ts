@@ -42,7 +42,7 @@ export const AUTH_CHECK = new RegExp(
     String.raw`(?<![.\w$])auth\s*\(`,
     String.raw`\bauth\s*\.\s*(?:protect\b|api\s*\.\s*getSession\b)`,
     // getCurrentUser / getServerProfile / loadSessionUser ... but not getServerSideProps, getAuthor, getUserById
-    String.raw`\b(?:get|fetch|load|require|ensure|assert)(?:Current|Authenticated|Logged\w*|Session|Server|Auth\w*|Signed\w*|Active|My)(?:User|Session|Profile|Account|Viewer|Member|Admin|Identity)(?:OrThrow|OrRedirect|OrNull|Id)?\s*\(`,
+    String.raw`\b(?:get|fetch|load|require|ensure|assert)(?:Current|Authenticated|Logged\w*|Session|Server|Auth\w*|Signed\w*|Active|My)(?:User|Session|Profile|Account|Viewer|Member|Admin|Identity|Context)(?:OrThrow|OrRedirect|OrNull|Id)?\s*\(`,
     String.raw`\b(?:require|ensure|assert)(?:User|Session|Admin|Login|LoggedIn|Auth\w*)\w*\s*\(`,
     // Project guards named require<Role|Scope>() / ensure<Role>() (requireOrganizer, requirePortalTab,
     // ensureMember): in server code these are access checks. Public-repo study; non-identity names excluded.

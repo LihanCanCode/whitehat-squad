@@ -6,7 +6,7 @@ export const isPagesApiPath = (p: string): boolean => classifyPath(p) === "pages
 export const isViteConfigPath = (p: string): boolean => /(?:^|\/)vite\.config\.(?:ts|js|mjs|mts)$/.test(p);
 
 const PUBLIC_PATH =
-  /(?:^|\/)(?:health|healthz|ping|status|login|logout|signin|sign-in|signup|sign-up|register|forgot-password|reset-password|callback|og|opengraph-image|csrf|robots|sitemap|manifest|version|available|\[\.\.\.nextauth\])(?:\/|\.[a-z]+$)/i;
+  /(?:^|\/)(?:health|healthz|ping|status|login|logout|signin|sign-in|signup|sign-up|register|forgot-password|reset-password|callback|og|opengraph-image|csrf|robots|sitemap|manifest|version|available|contact|otp|verify-otp|newsletter|subscribe|unsubscribe|waitlist|feedback|\[\.\.\.nextauth\])(?:\/|\.[a-z]+$)/i;
 export const isPublicByDesign = (p: string): boolean => PUBLIC_PATH.test(p);
 export const isWebhookPath = (p: string): boolean => /webhook/i.test(p);
 

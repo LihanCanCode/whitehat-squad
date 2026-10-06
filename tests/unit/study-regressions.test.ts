@@ -96,3 +96,16 @@ describe("DatabaseGuard calibration", () => {
     expect(await sev('const s = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);\nDeno.serve(async () => { await s.from("users").delete().neq("id", ""); return new Response("ok"); });\n')).toBe("high");
   });
 });
+
+describe("AUTH-002: getAuthContext() and public-by-design routes", () => {
+  const route = (guard: string) => `export async function POST(request: Request) {\n  ${guard}\n  const body = await request.json();\n  await supabase.from("rows").insert(body);\n  return Response.json({ ok: true });\n}\n`;
+  it("getAuthContext() is an auth check; contact/OTP routes are public by design", async () => {
+    const { agent } = await import("../../src/agents/auth-auditor/index.js");
+    const ids = async (files: Record<string, string>) => (await agent.run(memContext(files))).map((f) => f.ruleId);
+    expect(await ids({ "app/api/scan/route.ts": route("const ctx = await getAuthContext();\n  if (!ctx) return new Response(null, { status: 401 });") })).not.toContain("AUTH-002");
+    expect(await ids({ "app/api/contact/route.ts": route("") })).not.toContain("AUTH-002");
+    expect(await ids({ "app/api/otp/verify/route.ts": route("") })).not.toContain("AUTH-002");
+    // control: the same unguarded route elsewhere still fires
+    expect(await ids({ "app/api/rows/route.ts": route("") })).toContain("AUTH-002");
+  });
+});
