@@ -114,6 +114,10 @@ invented code is dropped — and a **fresh validator** tries to disprove what's 
 (`confirmed` / `needs validation` / rejected). Unchanged units are cached, so re-runs only pay for
 what changed.
 
+Python review units include FastAPI and Flask decorator routes and Django REST Framework
+`@api_view` / `@action` views. Django URLconf-only `path()` mappings are not yet associated with
+view functions, so those views need a supported route decorator to be included.
+
 Safety rails: the model gets **no tools** (no file, shell or web access) and runs in a fresh folder
 outside your repo, so a hostile `CLAUDE.md` can't steer it; its cache lives in your user folder
 (`~/.whsquad/review`, or set `WHSQUAD_STATE_DIR`), so a repo can't plant results; only code files are
@@ -255,7 +259,6 @@ Contributions are very welcome — false-positive reports most of all. Start wit
 
 ## Roadmap
 
-- AI review for Python (FastAPI / Flask / Django) handlers
 - Cross-file taint in the deterministic engine
 - SvelteKit / Remix / Nuxt route handlers; Clerk / Auth0 / Better Auth recognition
 - Opt-in OSV lookups for SupplyChain

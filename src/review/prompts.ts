@@ -93,7 +93,7 @@ export const VALIDATOR_SYSTEM = [
 export const newFence = (): string => randomBytes(9).toString("hex");
 
 function unitHeader(u: ReviewUnit): string {
-  const where = u.kind === "sql" ? "database policies" : `${u.kind} ${untrusted(u.name, 160)} in ${untrusted(u.file, 200)} (lines ${u.startLine}-${u.endLine})`;
+  const where = u.kind === "sql" ? "database policies" : `${u.framework ? `${u.framework} ` : ""}${u.kind} ${untrusted(u.name, 160)} in ${untrusted(u.file, 200)} (lines ${u.startLine}-${u.endLine})`;
   const guards = u.kind === "sql" ? "" : `\nGuards the static engine detected on this unit: ${u.guards.length ? u.guards.join(", ") : "none"}.`;
   const cut = u.truncatedLines > 0 ? `\nOnly part of this unit is shown: ${u.truncatedLines} further lines are not included, so do not claim a check is missing from them.` : "";
   const omitted = u.omitted.length > 0 ? `\nNot shown (size limit): ${u.omitted.map((o) => untrusted(o, 120)).join(", ")}.` : "";

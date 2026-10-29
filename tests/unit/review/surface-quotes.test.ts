@@ -42,6 +42,70 @@ describe("buildUnits", () => {
     expect(hash(a, "app/actions/orders.ts")).toBe(hash(b, "app/actions/orders.ts"));
     expect(hash(a, "app/api/notes/[id]/route.ts")).not.toBe(hash(b, "app/api/notes/[id]/route.ts"));
   });
+
+  it("builds FastAPI units with one hop of relative imports and no recursive expansion", async () => {
+    const files = {
+      "api/routes.py": 'from fastapi import APIRouter\nfrom .services import fetch_order\nrouter = APIRouter()\n\n@router.get("/orders/{order_id}")\nasync def get_order(order_id: int):\n    return fetch_order(order_id)\n',
+      "api/services.py": 'from .database import query_order\ndef fetch_order(order_id):\n    return query_order(order_id)\n',
+      "api/database.py": "def query_order(order_id):\n    return None\n",
+    };
+    const units = await buildUnits(memFiles(files), []);
+    const route = units.find((u) => u.file === "api/routes.py");
+    expect(route).toMatchObject({ kind: "handler", framework: "FastAPI", method: "GET", route: "/orders/{order_id}" });
+    expect(route?.excerpt).toContain("async def get_order");
+    expect(route?.related.map((item) => item.file)).toEqual(["api/services.py"]);
+    expect(route?.related[0]?.excerpt).toContain("def fetch_order");
+    expect(route?.related).not.toContainEqual(expect.objectContaining({ file: "api/database.py" }));
+  });
+
+  it("builds multiple Flask routes and deduplicates repeated routes", async () => {
+    const files = {
+      "app.py": 'from flask import Flask\napp = Flask(__name__)\n\n@app.route("/items", methods=["GET", "POST"])\ndef items():\n    return []\n\n@app.get("/health")\ndef health():\n    return "ok"\n\n@app.get("/health")\ndef duplicate_health():\n    return "ok"\n',
+    };
+    const units = await buildUnits(memFiles(files), []);
+    const routes = units.filter((u) => u.file === "app.py");
+    expect(routes).toHaveLength(2);
+    expect(routes.map((u) => [u.framework, u.method, u.route])).toEqual(expect.arrayContaining([
+      ["Flask", "GET, POST", "/items"],
+      ["Flask", "GET", "/health"],
+    ]));
+  });
+
+  it("builds Django REST Framework decorated views but does not infer URLconf-only routes", async () => {
+    const files = {
+      "views.py": 'from django.http import JsonResponse\nfrom rest_framework.decorators import api_view\n\n@api_view(["GET", "POST"])\ndef list_items(request):\n    return JsonResponse({"items": []})\n\ndef urlconf_only(request):\n    return JsonResponse({"ok": True})\n',
+      "urls.py": 'from django.urls import path\nfrom . import views\nurlpatterns = [path("items/", views.urlconf_only)]\n',
+    };
+    const units = await buildUnits(memFiles(files), []);
+    expect(units.filter((u) => u.file === "views.py")).toMatchObject([
+      { framework: "Django", method: "GET, POST", name: "GET, POST list_items" },
+    ]);
+    expect(units.some((u) => u.name.includes("urlconf_only"))).toBe(false);
+  });
+
+  it("ignores unresolved, duplicate, and malformed Python imports without failing", async () => {
+    const files = {
+      "routes.py": 'from fastapi import FastAPI\nfrom missing import thing\nfrom .helpers import lookup\nfrom .helpers import lookup as lookup_again\napp = FastAPI()\n@app.get("/x")\ndef x():\n    return lookup()\n',
+      "helpers.py": "def lookup():\n    return 1\n",
+      "broken.py": 'from fastapi import FastAPI\n@app.get("/broken")\ndef broken(:\n    return None\n',
+    };
+    const units = await buildUnits(memFiles(files), []);
+    const route = units.find((u) => u.file === "routes.py");
+    expect(route?.related.map((item) => item.file)).toEqual(["helpers.py"]);
+    expect(units.some((u) => u.file === "broken.py")).toBe(false);
+  });
+
+  it("keeps existing JS/TS handler and SQL policy units alongside Python units", async () => {
+    const files = {
+      ...APP,
+      "api.py": 'from fastapi import FastAPI\napp = FastAPI()\n@app.post("/x")\ndef x():\n    return {}\n',
+      "supabase/migrations/1.sql": "create policy p on public.notes for select using (true);\n",
+    };
+    const units = await buildUnits(memFiles(files), []);
+    expect(units.some((u) => u.file === "app/api/notes/[id]/route.ts" && u.kind === "handler")).toBe(true);
+    expect(units.some((u) => u.file === "api.py" && u.framework === "FastAPI")).toBe(true);
+    expect(units.some((u) => u.kind === "sql")).toBe(true);
+  });
 });
 
 describe("localImports", () => {

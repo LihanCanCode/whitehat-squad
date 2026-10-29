@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { classifyFile, createSource, handlerUnits, isGeneratedPath, isTestPath, isVendorPath, lineOf, unitHas } from "../core/source/index.js";
 import type { FunctionUnit, GuardName, Source } from "../core/source/index.js";
 import type { FileIndex, Finding } from "../core/types.js";
+import { frameworksInSource } from "../agents/py-guard/frameworks.js";
+import { findFunctions, ROUTE_DECORATOR, type PyFunction } from "../agents/py-guard/scope.js";
+import { PyText, statementEnd } from "../agents/py-guard/pytext.js";
 import { SECRET_PATTERNS } from "../data/secret-patterns.js";
 import { scrubText } from "../safety/redact.js";
 
@@ -11,6 +14,7 @@ export interface ReviewUnit {
   readonly kind: "handler" | "action" | "sql";
   readonly file: string;
   readonly name: string;
+  readonly framework?: "FastAPI" | "Flask" | "Django";
   readonly method?: string;
   readonly route?: string;
   readonly startLine: number;
@@ -34,6 +38,8 @@ export interface ReviewUnit {
 }
 
 const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/i;
+const PY_FILE = /\.py$/i;
+const IMPORTABLE_FILE = /\.(?:[cm]?[jt]sx?|py)$/i;
 /** Never sent, even when imported: credentials and config that commonly hold secrets. */
 const SECRET_FILE =
   /(?:^|\/)(?:\.env[^/]*|\.npmrc|\.pypirc|\.netrc|\.dev\.vars|\.git-credentials|id_[rd]sa[^/]*|[^/]*\.(?:pem|key|p12|pfx|jks|keystore|tfvars|tfstate)|[^/]*(?:credential|secret|service[-_]?account)[^/]*)$/i;
@@ -94,6 +100,8 @@ export async function envSecrets(files: FileIndex): Promise<Set<string>> {
 
 // Linear: `[^"';]{0,300}` cannot backtrack quadratically on long whitespace runs.
 const IMPORT = /\bimport\s[^"';]{0,300}["']([^"'\n]{1,200})["']|\bimport\(\s{0,5}["']([^"'\n]{1,200})["']|\brequire\(\s{0,5}["']([^"'\n]{1,200})["']\s{0,5}\)/g;
+const PY_FROM_IMPORT = /^[ \t]*from[ \t]+([.\w]+)[ \t]+import\b/gm;
+const PY_IMPORT = /^[ \t]*import[ \t]+/gm;
 const EXTENSIONS = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", "/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
 const JS_EXT = /\.(?:js|jsx|mjs|cjs)$/;
 
@@ -148,6 +156,7 @@ function tailIndex(known: ReadonlySet<string>): Map<string, string[]> {
 
 /** Local imports of a file (relative or path-alias), resolved against the index, with the names they bind. */
 export function localImports(file: string, raw: string, known: ReadonlySet<string>, byTail: ReadonlyMap<string, readonly string[]> = tailIndex(known)): { file: string; names: string[] }[] {
+  if (PY_FILE.test(file)) return pythonLocalImports(file, raw, known, byTail);
   if (raw.length > MAX_IMPORT_SCAN) return [];
   const found: { file: string; names: string[] }[] = [];
   for (const m of raw.matchAll(IMPORT)) {
@@ -159,6 +168,63 @@ export function localImports(file: string, raw: string, known: ReadonlySet<strin
     found.push({ file: hit, names });
   }
   return found;
+}
+
+function resolvePythonModule(file: string, spec: string, known: ReadonlySet<string>, byTail: ReadonlyMap<string, readonly string[]>): string | undefined {
+  const dots = /^\.+/.exec(spec)?.[0].length ?? 0;
+  const rest = spec.slice(dots).replace(/\./g, "/");
+  const directory = dirname(file).split("/").filter(Boolean);
+  const base = dots > 0
+    ? [...directory.slice(0, Math.max(0, directory.length - dots + 1)), ...(rest ? rest.split("/") : [])].join("/")
+    : rest;
+  if (!base) return undefined;
+  const endings = [`${base}.py`, `${base}/__init__.py`];
+  for (const candidate of endings) if (known.has(candidate)) return candidate;
+  const candidates = endings.flatMap((ending) => byTail.get(ending) ?? []);
+  return candidates.sort((a, b) => commonPrefix(b, file) - commonPrefix(a, file) || a.length - b.length)[0];
+}
+
+function importedNames(clause: string): string[] {
+  return clause.replace(/[()]/g, "").split(",").flatMap((part) => {
+    const item = part.trim();
+    if (!item || item === "*") return item === "*" ? ["*"] : [];
+    const [name, alias] = item.split(/\s+as\s+/i);
+    const bound = alias ?? name?.split(".")[0];
+    return bound && /^[A-Za-z_]\w*$/.test(bound) ? [bound] : [];
+  });
+}
+
+function pythonLocalImports(file: string, raw: string, known: ReadonlySet<string>, byTail: ReadonlyMap<string, readonly string[]>): { file: string; names: string[] }[] {
+  if (raw.length > MAX_IMPORT_SCAN) return [];
+  const code = new PyText(raw).code;
+  const found = new Map<string, Set<string>>();
+  const add = (spec: string, names: readonly string[]): void => {
+    const hit = resolvePythonModule(file, spec, known, byTail);
+    if (!hit || hit === file) return;
+    const bound = found.get(hit) ?? new Set<string>();
+    for (const name of names) bound.add(name);
+    found.set(hit, bound);
+  };
+  for (const match of code.matchAll(PY_FROM_IMPORT)) {
+    const spec = match[1] ?? "";
+    const clause = code.slice(match.index + match[0].length, statementEnd(code, match.index));
+    const names = importedNames(clause);
+    add(spec, names);
+    for (const name of names) {
+      if (name === "*") continue;
+      if (/^\.+$/.test(spec)) add(`${spec}${name}`, [name]);
+      else if (!spec.startsWith(".")) add(`${spec}.${name}`, [name]);
+    }
+  }
+  for (const match of code.matchAll(PY_IMPORT)) {
+    const clause = code.slice(match.index + match[0].length, statementEnd(code, match.index));
+    for (const item of clause.split(",")) {
+      const parts = item.trim().split(/\s+as\s+/i);
+      const spec = parts[0]?.trim() ?? "";
+      if (spec) add(spec, [parts[1]?.trim() || spec.split(".")[0] || ""]);
+    }
+  }
+  return [...found].map(([path, names]) => ({ file: path, names: [...names] }));
 }
 
 function scoreUnit(body: string, u: FunctionUnit, guards: readonly GuardName[], hasRuleFindings: boolean, file: string): number {
@@ -208,7 +274,7 @@ function makeLoader(files: FileIndex): Loader {
 
 /** Imported modules the unit actually calls come first; only code files, never secret files. */
 async function relatedFor(f: Loaded, body: string, load: Loader, known: ReadonlySet<string>, byTail: ReadonlyMap<string, readonly string[]>, secrets: ReadonlySet<string>) {
-  const imports = localImports(f.path, f.raw, known, byTail).filter((i) => CODE_FILE.test(i.file) && !SECRET_FILE.test(i.file));
+  const imports = localImports(f.path, f.raw, known, byTail).filter((i) => IMPORTABLE_FILE.test(i.file) && !SECRET_FILE.test(i.file));
   const used = (i: { names: string[] }): boolean => i.names.some((n) => new RegExp(`\\b${n.replace(/\$/g, "\\$")}\\b`).test(body));
   const ranked = [...imports.filter(used), ...imports.filter((i) => !used(i))];
   const related: { file: string; excerpt: string }[] = [];
@@ -293,6 +359,102 @@ async function handlerUnitsOf(f: Loaded, findings: readonly Finding[], load: Loa
   return out;
 }
 
+interface PythonRoute {
+  readonly framework: "FastAPI" | "Flask" | "Django";
+  readonly method?: string;
+  readonly path?: string;
+}
+
+function pythonDecorators(pt: PyText, fn: PyFunction): { code: string; raw: string }[] {
+  const found: { code: string; raw: string }[] = [];
+  const code = pt.code.slice(fn.start, fn.defStart);
+  for (const match of code.matchAll(/^[ \t]*@/gm)) {
+    const start = fn.start + match.index + match[0].lastIndexOf("@");
+    const end = statementEnd(pt.code, start);
+    found.push({ code: pt.code.slice(start, end).trim(), raw: pt.raw.slice(start, end).trim() });
+  }
+  return found;
+}
+
+function pythonRoute(fn: PyFunction, decorators: readonly { code: string; raw: string }[], frameworks: ReadonlySet<string>): PythonRoute | undefined {
+  const routeDecorator = decorators.find(({ code }) => ROUTE_DECORATOR.test(code));
+  if (!routeDecorator) return undefined;
+  const djangoDecorator = /^@\s*(?:api_view|action)\b/.test(routeDecorator.code);
+  let framework: PythonRoute["framework"];
+  if (djangoDecorator && frameworks.has("django")) framework = "Django";
+  else if (frameworks.has("fastapi")) framework = "FastAPI";
+  else if (frameworks.has("flask")) framework = "Flask";
+  else return undefined;
+
+  const decoratorName = /^@\s*(?:[\w]+\s*\.\s*)*([\w]+)\s*\(/.exec(routeDecorator.code)?.[1]?.toLowerCase();
+  const raw = routeDecorator.raw;
+  const firstString = /["']([^"'\n]*)["']/.exec(raw)?.[1];
+  const listedMethods = /\bmethods\s*=\s*\[([^\]]{0,200})\]/i.exec(raw)?.[1];
+  const apiMethods = framework === "Django" ? /@\s*api_view\s*\(\s*\[([^\]]{0,200})\]/i.exec(raw)?.[1] : undefined;
+  const methods = (listedMethods ?? apiMethods)?.match(/["']([A-Za-z]+)["']/g)?.map((m) => m.slice(1, -1).toUpperCase());
+  const method = methods?.length
+    ? [...new Set(methods)].join(", ")
+    : decoratorName && ["get", "post", "put", "patch", "delete", "head", "options"].includes(decoratorName)
+      ? decoratorName.toUpperCase()
+      : framework === "Flask" && decoratorName === "route"
+        ? "GET"
+        : undefined;
+  return { framework, ...(method ? { method } : {}), ...(firstString && !djangoDecorator ? { path: firstString } : {}) };
+}
+
+async function pythonRouteUnitsOf(f: Loaded, findings: readonly Finding[], load: Loader, known: ReadonlySet<string>, byTail: ReadonlyMap<string, readonly string[]>, secrets: ReadonlySet<string>): Promise<ReviewUnit[]> {
+  const pt = new PyText(f.raw);
+  const funcs = findFunctions(pt);
+  const frameworks = frameworksInSource(f.raw);
+  const seenRoutes = new Set<string>();
+  const out: ReviewUnit[] = [];
+  for (const fn of funcs) {
+    const route = pythonRoute(fn, pythonDecorators(pt, fn), frameworks);
+    if (!route) continue;
+    const routeLabel = route.method ? `${route.method} ${route.path ?? fn.name}` : route.path ?? fn.name;
+    const routeKey = `${route.method ?? ""}\n${route.path ?? fn.name}`;
+    if (seenRoutes.has(routeKey)) continue;
+    seenRoutes.add(routeKey);
+
+    const start = pt.lineOf(fn.start);
+    const fullEnd = pt.lineOf(Math.max(fn.start, fn.bodyEnd - 1));
+    const end = Math.min(fullEnd, start + MAX_UNIT_LINES - 1);
+    const truncatedLines = fullEnd - end;
+    const body = f.raw.slice(fn.start, fn.bodyEnd);
+    const imported = await relatedFor(f, body, load, known, byTail, secrets);
+    const excerpt = redactSecrets(`${numbered(f.lines, start, end)}${truncatedLines > 0 ? `\n  ... (${truncatedLines} more lines of this unit not shown)` : ""}`, secrets);
+    const ruleContext = findingsIn([f.path, ...imported.map((r) => r.file)], findings);
+    const guards: readonly GuardName[] = [];
+    let score = route.method?.split(/,\s*/).some((method) => MUTATION.test(method)) ? 3 : 0;
+    if (DATA.test(body)) score += 2;
+    if (MONEY.test(body)) score += 3;
+    if (LLM.test(body)) score += 2;
+    if (WEBHOOK.test(route.path ?? "") || WEBHOOK.test(body)) score += 2;
+    score += 2;
+    if (ruleContext.length > 0) score += 1;
+    out.push({
+      id: `${f.path}#${routeLabel}`,
+      kind: "handler",
+      file: f.path,
+      name: routeLabel,
+      framework: route.framework,
+      ...(route.method ? { method: route.method } : {}),
+      ...(route.path ? { route: route.path } : {}),
+      startLine: start,
+      endLine: end,
+      truncatedLines,
+      guards,
+      excerpt,
+      related: imported,
+      ruleContext,
+      omitted: [],
+      score,
+      contentHash: hash([excerpt, ...imported.map((r) => r.excerpt), ...ruleContext].join("\n")),
+    });
+  }
+  return out;
+}
+
 /** One unit for every database policy file, split by size; files that do not fit are named, not hidden. */
 async function sqlUnit(files: FileIndex, findings: readonly Finding[], load: Loader, secrets: ReadonlySet<string>): Promise<ReviewUnit | undefined> {
   const sqlFiles = files.paths.filter((p) => /\.sql$/i.test(p) && /(?:^|\/)(?:supabase|migrations|db|database|sql)\//.test(p) && !p.includes("node_modules/")).sort();
@@ -328,7 +490,13 @@ export async function buildUnits(files: FileIndex, findings: readonly Finding[],
   const policies = await policyIndex(files, load);
   const units: ReviewUnit[] = [];
   for (const p of files.paths) {
-    if (!CODE_FILE.test(p) || SECRET_FILE.test(p) || isTestPath(p) || isVendorPath(p) || isGeneratedPath(p)) continue;
+    if (SECRET_FILE.test(p) || isTestPath(p) || isVendorPath(p) || isGeneratedPath(p)) continue;
+    if (PY_FILE.test(p)) {
+      const f = await load(p);
+      if (f) units.push(...(await pythonRouteUnitsOf(f, findings, load, known, byTail, secrets)));
+      continue;
+    }
+    if (!CODE_FILE.test(p)) continue;
     const f = await load(p);
     if (!f || classifyFile(f.src) === "client") continue;
     units.push(...(await handlerUnitsOf(f, findings, load, known, byTail, secrets, policies)));
