@@ -251,7 +251,7 @@ npm run build
 ```
 
 Contributions are very welcome — false-positive reports most of all. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](https://github.com/LihanCanCode/whitehat-squad/labels/good%20first%20issue).
+[CONTRIBUTING.md](CONTRIBUTING.md), the [FAQ](docs/FAQ.md) and the [good first issues](https://github.com/LihanCanCode/whitehat-squad/labels/good%20first%20issue).
 
 ## Roadmap
 
